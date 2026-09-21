@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1d3b2f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GSH">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>GSH Stundenuhr</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --board: #1d3b2f;
+    --board-deep: #16291f;
+    --frame: #5c4630;
+    --frame-dark: #43331f;
+    --chalk: #f4f1e4;
+    --chalk-dim: #8fa79a;
+    --chalk-yellow: #e8b84b;
+    --chalk-red: #d2694a;
+    --chalk-green: #7bb662;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+
+  body {
+    background: var(--frame-dark);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--chalk);
+    padding: 24px 16px;
+  }
+
+  .wrap { width: 100%; max-width: 96vw; }
+
+  .board {
+    background: var(--board);
+    background-image:
+      linear-gradient(rgba(244,241,228,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(244,241,228,0.05) 1px, transparent 1px),
+      radial-gradient(ellipse at 20% 10%, rgba(255,255,255,0.03), transparent 40%),
+      radial-gradient(ellipse at 80% 90%, rgba(255,255,255,0.025), transparent 45%);
+    background-size: 26px 26px, 26px 26px, auto, auto;
+    border: 3.5px solid var(--frame);
+    border-radius: 6px;
+    box-shadow: 0 0 0 3px var(--frame-dark), inset 0 0 60px rgba(0,0,0,0.35), 0 20px 50px rgba(0,0,0,0.5);
+    padding: 28px 26px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .chalk-sums { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  .chalk-sums span {
+    position: absolute;
+    font-family: 'Patrick Hand', cursive;
+    color: var(--chalk);
+    opacity: 0.20;
+    white-space: nowrap;
+  }
+  @media (max-width: 600px) { .chalk-sums { display: none; } }
+
+  .board > *:not(.chalk-sums) { position: relative; z-index: 1; }
+
+  .header-line {
+    display: flex; align-items: baseline; justify-content: center; gap: 10px;
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 1.7rem;
+    margin-bottom: 18px;
+  }
+  .header-line .sep { opacity: 0.45; }
+
+  .mode-switch {
+    display: flex; justify-content: center; gap: 0; margin-bottom: 18px;
+    border: 1.5px solid rgba(244,241,228,0.25); border-radius: 6px;
+    overflow: hidden; width: fit-content; margin-left: auto; margin-right: auto;
+  }
+  .mode-btn {
+    background: transparent; border: none; color: var(--chalk-dim);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; font-weight: 500;
+    padding: 7px 18px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .mode-btn + .mode-btn { border-left: 1.5px solid rgba(244,241,228,0.25); }
+  .mode-btn:hover { background: rgba(244,241,228,0.08); color: var(--chalk); }
+  .mode-btn.active { background: var(--chalk-yellow); color: var(--board-deep); font-weight: 700; }
+
+  .now-panel {
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    gap: 18px;
+    background: rgba(0,0,0,0.15);
+    border: 1px solid rgba(244,241,228,0.12);
+    border-radius: 8px;
+    padding: 24px 20px;
+  }
+
+  .ring-wrap { position: relative; width: 75vmin; height: 75vmin; flex-shrink: 0; }
+  .ring-wrap svg { width: 100%; height: 100%; display: block; }
+  .pie-bg { fill: var(--board-deep); }
+  .pie-slice { transition: fill 0.4s ease; }
+  .pie-contour { fill: none; stroke: var(--chalk); stroke-opacity: 0.55; stroke-width: 2.5; }
+  .pause-ring { fill: none; stroke: var(--chalk-red); stroke-width: 9; }
+
+  .ring-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--chalk);
+    -webkit-text-stroke: 2px var(--board-deep);
+    paint-order: stroke fill;
+    text-shadow:
+      -1.5px -1.5px 0 var(--board-deep), 1.5px -1.5px 0 var(--board-deep),
+      -1.5px  1.5px 0 var(--board-deep), 1.5px  1.5px 0 var(--board-deep);
+  }
+  .ring-countdown { font-size: 12vmin; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+  .ring-countdown.long { font-size: 8.5vmin; }
+  .ring-clock { font-size: 7vmin; font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.85; margin-top: 0.6vmin; }
+
+  .now-class { font-family: 'Caveat', cursive; font-size: 2rem; font-weight: 700; color: var(--chalk-yellow); line-height: 1.1; }
+  .now-hint { font-size: 0.75rem; color: var(--chalk-dim); margin-top: 4px; }
+
+  .idle-msg { font-size: 0.95rem; color: var(--chalk-dim); line-height: 1.5; }
+  .idle-msg b { color: var(--chalk); }
+
+  .btn-row { display: flex; justify-content: center; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+
+  .raster-title {
+    font-size: 0.72rem; color: var(--chalk-dim); text-transform: uppercase;
+    letter-spacing: 1.5px; text-align: center; margin: 22px 0 10px;
+  }
+  .raster-scroll {
+    max-height: 320px; overflow-y: auto;
+    border: 1px solid rgba(244,241,228,0.1); border-radius: 4px;
+  }
+  .raster-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .raster-table thead th {
+    position: sticky; top: 0; background: var(--board-deep);
+    text-align: left; padding: 8px 12px; color: var(--chalk-dim);
+    font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.68rem;
+    border-bottom: 1px solid rgba(244,241,228,0.15);
+  }
+  .raster-table tbody td { padding: 7px 12px; border-bottom: 1px solid rgba(244,241,228,0.06); }
+  .raster-table tbody tr.is-pause td { color: var(--chalk-dim); font-style: italic; }
+  .raster-table tbody tr.is-current { background: rgba(232,184,75,0.18); font-weight: 600; }
+  .raster-table tbody tr.is-current td { color: var(--chalk-yellow); }
+  .raster-table tbody tr.is-current.is-pause td { color: var(--chalk-red); }
+  .fs-btn {
+    background: transparent; border: 1.5px solid rgba(244,241,228,0.3); color: var(--chalk);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+    padding: 7px 16px; border-radius: 3px; cursor: pointer;
+  }
+  .fs-btn:hover { border-color: var(--chalk); background: rgba(244,241,228,0.08); }
+  .fs-btn.off { opacity: 0.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="board">
+    <div class="chalk-sums" aria-hidden="true">
+      <span style="top:10px; left:16px; font-size:1.9rem; transform:rotate(-7deg);">7 + 5 = 12</span>
+      <span style="top:14px; right:18px; font-size:1.6rem; transform:rotate(6deg);">9 − 4 = 5</span>
+      <span style="bottom:14px; left:22px; font-size:1.75rem; transform:rotate(4deg);">6 × 3 = 18</span>
+      <span style="bottom:10px; right:16px; font-size:1.5rem; transform:rotate(-5deg);">20 ÷ 4 = 5</span>
+      <span style="top:46%; right:2%; font-size:1.5rem; transform:rotate(-3deg);">3 + 8 = 11</span>
+      <span style="top:46%; left:8px; font-size:1.35rem; transform:rotate(5deg); max-width:220px; white-space:normal; line-height:1.3;">G&mu;&nu; + &Lambda;g&mu;&nu; = 8&pi;G/c&sup4; T&mu;&nu;</span>
+      <span style="top:54.6%; left:48.4%; font-size:1.52rem; transform:rotate(-5.2deg);">4 + 2 = 6</span>
+      <span style="top:90.0%; left:69.8%; font-size:1.21rem; transform:rotate(6.8deg);">8 − 3 = 5</span>
+      <span style="top:31.1%; left:89.1%; font-size:1.28rem; transform:rotate(7.5deg);">10 ÷ 2 = 5</span>
+      <span style="top:3.8%; left:25.2%; font-size:1.50rem; transform:rotate(1.5deg);">12 − 7 = 5</span>
+      <span style="top:75.1%; left:8.3%; font-size:1.30rem; transform:rotate(9.0deg);">15 ÷ 3 = 5</span>
+      <span style="top:96.0%; left:2.0%; font-size:1.36rem; transform:rotate(-7.0deg);">14 − 6 = 8</span>
+      <span style="top:5.2%; left:89.3%; font-size:1.24rem; transform:rotate(-7.9deg);">18 ÷ 6 = 3</span>
+      <span style="top:70.8%; left:50.5%; font-size:1.37rem; transform:rotate(-4.2deg);">5 + 6 = 11</span>
+      <span style="top:8.4%; left:51.8%; font-size:1.53rem; transform:rotate(-0.8deg);">9 × 3 = 27</span>
+      <span style="top:23.3%; left:25.0%; font-size:1.49rem; transform:rotate(7.4deg);">10 − 3 = 7</span>
+    </div>
+
+    <div class="header-line"><span>GSH</span><span class="sep">·</span><span id="todayStr">–</span></div>
+
+    <div class="mode-switch">
+      <button class="mode-btn active" id="sek1Btn" data-mode="sek1">Sek I</button>
+      <button class="mode-btn" id="sek2Btn" data-mode="sek2">Sek II</button>
+    </div>
+
+    <div class="now-panel" id="nowPanel"></div>
+
+    <div class="raster-title">Stundenraster</div>
+    <div class="raster-scroll">
+      <table class="raster-table">
+        <thead><tr><th>Zeit</th><th>Stunde</th></tr></thead>
+        <tbody id="rasterBody"></tbody>
+      </table>
+    </div>
+
+    <div class="btn-row">
+      <button class="fs-btn" id="fsBtn">Vollbild</button>
+      <button class="fs-btn" id="wakeBtn">Display an: aktiv</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const wtNames = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function fmtDate(d) { return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`; }
+
+  // Grundraster GSH Sekundarstufe I (Jg. 5-10), Muster Mo/Mi/Do - identisch für
+  // Abteilung I (5-7) und Abteilung II (8-10). Dienstag/Freitag weichen an der
+  // echten Schule nachmittags ab (kürzer/Konferenzen) - hier bewusst auf das
+  // gemeinsame Grundraster vereinfacht.
+  const SEK1_PERIODS = [
+    { stunde: '0', label: 'Gemeinsamer Anfang', von: '07:55', bis: '08:05' },
+    { stunde: '1', von: '08:10', bis: '09:10' },
+    { stunde: '2', von: '09:15', bis: '10:15', pauseAfter: 'Frühstückspause' },
+    { stunde: '3', von: '10:40', bis: '11:40' },
+    { stunde: '4', von: '11:45', bis: '12:45', pauseAfter: 'Mittagspause' },
+    { stunde: '5', von: '13:50', bis: '14:50' },
+    { stunde: '6', von: '14:55', bis: '15:55' }
+  ];
+
+  // Sekundarstufe II (EF-Q2): komplett anderer Rhythmus - Beratungszeit statt
+  // Gemeinsamem Anfang, 45-Minuten-ILSZ-Bloecke statt 60-Minuten-Stunden, längerer
+  // Schultag. Basiert auf dem Mo/Mi/Do/Fr-Grundmuster; Dienstag (ILSZ/PJK mit
+  // abweichenden Zeiten) ist hier bewusst vereinfacht weggelassen.
+  const SEK2_PERIODS = [
+    { stunde: '0', label: 'Beratungszeit', von: '07:55', bis: '08:05' },
+    { stunde: '1', label: 'Kurs/ILSZ', von: '08:10', bis: '09:10' },
+    { stunde: '2', label: 'Kurs', von: '09:15', bis: '10:15', pauseAfter: 'Frühstückspause' },
+    { stunde: '3', label: 'Kurs', von: '10:40', bis: '11:40' },
+    { stunde: '4', label: 'Kurs', von: '11:45', bis: '12:45', pauseAfter: 'Mittag' },
+    { stunde: '5', label: 'ILSZ', von: '13:15', bis: '14:00' },
+    { stunde: '6', label: 'ILSZ', von: '14:05', bis: '14:50' },
+    { stunde: '7', label: 'ILSZ', von: '14:55', bis: '15:40' },
+    { stunde: '8', label: 'Sonderunterricht/Lernzeit', von: '15:40', bis: '16:25' }
+  ];
+
+  let currentMode = 'sek1';
+  function activePeriods() { return currentMode === 'sek1' ? SEK1_PERIODS : SEK2_PERIODS; }
+
+  function buildDayEntries(dayOffset) {
+    const now = new Date();
+    const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+    return activePeriods().map((p) => {
+      const [vh, vm] = p.von.split(':').map(Number);
+      const [bh, bm] = p.bis.split(':').map(Number);
+      const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), vh, vm);
+      const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), bh, bm);
+      return {
+        stunde: p.stunde, label: p.label || null, von: p.von, bis: p.bis,
+        start, end, pauseAfter: p.pauseAfter || null,
+        key: `p_${fmtDate(start)}_${p.von}`
+      };
+    });
+  }
+
+  function buildEntries() {
+    return [...buildDayEntries(0), ...buildDayEntries(1)].sort((a, b) => a.start - b.start);
+  }
+
+  // Fuegt zwischen aufeinanderfolgenden Stunden automatisch "Pause"-Segmente ein,
+  // mit spezifischem Namen (Fruehstueckspause/Mittagspause), falls angegeben.
+  function buildTimeline(list) {
+    const timeline = [];
+    for (let i = 0; i < list.length; i++) {
+      timeline.push(list[i]);
+      if (i < list.length - 1) {
+        const gapStart = list[i].end;
+        const gapEnd = list[i + 1].start;
+        if (gapEnd - gapStart > 60000) {
+          timeline.push({
+            isPause: true, label: list[i].pauseAfter || 'Pause',
+            von: `${pad2(gapStart.getHours())}:${pad2(gapStart.getMinutes())}`,
+            bis: `${pad2(gapEnd.getHours())}:${pad2(gapEnd.getMinutes())}`,
+            start: gapStart, end: gapEnd,
+            key: `pause_${gapStart.getTime()}`
+          });
+        }
+      }
+    }
+    return timeline;
+  }
+
+  const nowPanel = document.getElementById('nowPanel');
+  const rasterBody = document.getElementById('rasterBody');
+
+  // Stundenraster-Zeilen (nur Zeiten, tagesunabhängig) inkl. Pausenzeilen,
+  // aus dem jeweils aktiven Perioden-Set abgeleitet.
+  function buildRasterRows() {
+    const periods = activePeriods();
+    const rows = [];
+    periods.forEach((p, i) => {
+      rows.push({ label: p.label || `${p.stunde}. Stunde`, von: p.von, bis: p.bis, isPause: false, stunde: p.stunde });
+      const next = periods[i + 1];
+      if (next) {
+        rows.push({ label: p.pauseAfter || 'Pause', von: p.bis, bis: next.von, isPause: true });
+      }
+    });
+    return rows;
+  }
+
+  function renderRaster(current) {
+    rasterBody.innerHTML = buildRasterRows().map((r) => {
+      const isCurrentRow = current && current.von === r.von && current.bis === r.bis && !!current.isPause === r.isPause;
+      const cls = [r.isPause ? 'is-pause' : '', isCurrentRow ? 'is-current' : ''].filter(Boolean).join(' ');
+      return `<tr class="${cls}"><td>${r.von}–${r.bis}</td><td>${r.label}</td></tr>`;
+    }).join('');
+  }
+  const todayStr = document.getElementById('todayStr');
+  const fsBtn = document.getElementById('fsBtn');
+  const wakeBtn = document.getElementById('wakeBtn');
+
+  const R = 56;
+
+  function pieSlicePath(cx, cy, r, sweepDeg) {
+    if (sweepDeg <= 0.01) return '';
+    const rad = (sweepDeg * Math.PI) / 180;
+    const x = cx + r * Math.sin(rad);
+    const y = cy - r * Math.cos(rad);
+    const largeArc = sweepDeg > 180 ? 1 : 0;
+    return `M ${cx} ${cy} L ${cx} ${cy - r} A ${r} ${r} 0 ${largeArc} 1 ${x} ${y} Z`;
+  }
+
+  function fmtClock(sec) {
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function fmtClockHMS(sec) {
+    sec = Math.max(0, Math.round(sec));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+  }
+
+  let audioCtxCache = null;
+  function playBell() {
+    try {
+      const ctx = audioCtxCache || (audioCtxCache = new (window.AudioContext || window.webkitAudioContext)());
+      const now = ctx.currentTime;
+      [0, 0.9, 1.8].forEach((delay) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now + delay);
+        osc.frequency.setValueAtTime(660, now + delay + 0.15);
+        gain.gain.setValueAtTime(0.0001, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.3, now + delay + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + 0.8);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(now + delay); osc.stop(now + delay + 0.85);
+      });
+    } catch (e) {}
+  }
+
+  let lastEndedKey = null;
+
+  function render() {
+    const now = new Date();
+    todayStr.textContent = `${wtNames[now.getDay()]}, ${pad2(now.getDate())}.${pad2(now.getMonth() + 1)}.${now.getFullYear()}`;
+    const nowClockText = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+    const entries = buildEntries();
+    const timeline = buildTimeline(entries);
+    const current = timeline.find(e => now >= e.start && now <= e.end);
+    const upcoming = entries.filter(e => e.start > now).slice(0, 1);
+
+    const justEnded = entries.find(e => {
+      const s = (now - e.end) / 1000;
+      return s >= 0 && s < 1.5;
+    });
+    if (justEnded && justEnded.key !== lastEndedKey) {
+      lastEndedKey = justEnded.key;
+      playBell();
+    }
+
+    if (current) {
+      const secLeft = (current.end - now) / 1000;
+      const elapsedSec = (now - current.start) / 1000;
+      const totalSec = (current.end - current.start) / 1000;
+
+      const fraction60 = Math.min(1, Math.max(0, secLeft / 3600));
+      const sweepDeg = fraction60 * 360;
+
+      const fracRemaining = totalSec > 0 ? Math.max(0, Math.min(1, secLeft / totalSec)) : 0;
+      const lastFiveFrac = totalSec > 0 ? Math.min(0.5, 300 / totalSec) : 0;
+      const GREEN = [123, 182, 98], YELLOW = [232, 184, 75], RED = [210, 105, 74];
+      function mix(c1, c2, t) { return c1.map((v, i) => Math.round(v + (c2[i] - v) * t)); }
+      let rgb;
+      if (fracRemaining > 0.5) {
+        rgb = mix(GREEN, YELLOW, 1 - (fracRemaining - 0.5) / 0.5);
+      } else if (fracRemaining > lastFiveFrac) {
+        const span = 0.5 - lastFiveFrac;
+        rgb = mix(YELLOW, RED, span > 0 ? 1 - (fracRemaining - lastFiveFrac) / span : 1);
+      } else {
+        rgb = RED;
+      }
+      const sliceColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+
+      let sliceMarkup;
+      if (sweepDeg >= 359.99) {
+        sliceMarkup = `<circle class="pie-slice" style="fill:${sliceColor}" cx="64" cy="64" r="${R}"></circle>`;
+      } else {
+        sliceMarkup = `<path class="pie-slice" style="fill:${sliceColor}" d="${pieSlicePath(64, 64, R, sweepDeg)}"></path>`;
+      }
+
+      let pauseRingMarkup = '';
+      if (current.isPause) {
+        const R2 = 44;
+        const sweepDeg2 = Math.max(0, Math.min(1, fracRemaining)) * 360;
+        if (sweepDeg2 >= 359.99) {
+          pauseRingMarkup = `<circle class="pause-ring" cx="64" cy="64" r="${R2}"></circle>`;
+        } else if (sweepDeg2 > 0.01) {
+          const rad2 = (sweepDeg2 * Math.PI) / 180;
+          const x2 = 64 - R2 * Math.sin(rad2);
+          const y2 = 64 - R2 * Math.cos(rad2);
+          const largeArc2 = sweepDeg2 > 180 ? 1 : 0;
+          pauseRingMarkup = `<path class="pause-ring" d="M 64 ${64 - R2} A ${R2} ${R2} 0 ${largeArc2} 0 ${x2} ${y2}"></path>`;
+        }
+      }
+
+      const lineText = current.isPause ? current.label : (current.label || `${current.stunde}. Std.`);
+      const countdownText = current.isPause ? fmtClockHMS(secLeft) : fmtClock(secLeft);
+
+      nowPanel.innerHTML = `
+        <div class="ring-wrap">
+          <svg viewBox="0 0 128 128">
+            <circle class="pie-bg" cx="64" cy="64" r="${R}"></circle>
+            ${sliceMarkup}
+            ${pauseRingMarkup}
+            <circle class="pie-contour" cx="64" cy="64" r="${R}"></circle>
+          </svg>
+          <div class="ring-center">
+            <div class="ring-countdown${current.isPause ? ' long' : ''}">${countdownText}</div>
+            <div class="ring-clock">${nowClockText}</div>
+          </div>
+        </div>
+        <div class="now-class">${lineText}</div>`;
+    } else if (upcoming.length > 0) {
+      const nxt = upcoming[0];
+      const secTo = (nxt.start - now) / 1000;
+      nowPanel.innerHTML = `
+        <div class="idle-msg">
+          Kein Unterricht gerade aktiv.<br>
+          Nächste Stunde: <b>${nxt.label || nxt.stunde + '. Std.'}</b> um <b>${nxt.von} Uhr</b> – in <b>${fmtClockHMS(secTo)}</b>
+        </div>`;
+    } else {
+      nowPanel.innerHTML = `<div class="idle-msg">Kein Unterricht gerade aktiv.</div>`;
+    }
+
+    renderRaster(current);
+  }
+
+  // ---- Wake Lock ----
+  let wakeLock = null;
+  let wakeWanted = true;
+  function setWakeBtnLabel() {
+    if (!('wakeLock' in navigator)) {
+      wakeBtn.textContent = 'Display an: nicht unterstützt';
+      wakeBtn.classList.add('off');
+      return;
+    }
+    wakeBtn.textContent = wakeLock ? 'Display an: aktiv' : (wakeWanted ? 'Display an: (tippen)' : 'Display an: aus');
+    wakeBtn.classList.toggle('off', !wakeLock);
+  }
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator) || !wakeWanted) { setWakeBtnLabel(); return; }
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; setWakeBtnLabel(); });
+      setWakeBtnLabel();
+    } catch (err) { wakeLock = null; setWakeBtnLabel(); }
+  }
+  function releaseWakeLock() { if (wakeLock) { wakeLock.release(); wakeLock = null; } setWakeBtnLabel(); }
+  wakeBtn.addEventListener('click', () => {
+    if (wakeLock) { wakeWanted = false; releaseWakeLock(); }
+    else { wakeWanted = true; requestWakeLock(); }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && wakeWanted) requestWakeLock();
+  });
+  requestWakeLock();
+
+  fsBtn.addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      fsBtn.textContent = 'Vollbild verlassen';
+    } else {
+      document.exitFullscreen().catch(() => {});
+      fsBtn.textContent = 'Vollbild';
+    }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    fsBtn.textContent = document.fullscreenElement ? 'Vollbild verlassen' : 'Vollbild';
+  });
+
+  const sek1Btn = document.getElementById('sek1Btn');
+  const sek2Btn = document.getElementById('sek2Btn');
+  function setMode(mode) {
+    currentMode = mode;
+    sek1Btn.classList.toggle('active', mode === 'sek1');
+    sek2Btn.classList.toggle('active', mode === 'sek2');
+    lastEndedKey = null;
+    render();
+  }
+  sek1Btn.addEventListener('click', () => setMode('sek1'));
+  sek2Btn.addEventListener('click', () => setMode('sek2'));
+
+  render();
+  setInterval(render, 1000);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
