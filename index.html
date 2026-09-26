@@ -380,6 +380,7 @@
   function buildDayEntries(dayOffset) {
     const now = new Date();
     const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+    if (base.getDay() === 0 || base.getDay() === 6) return []; // Sa/So: kein Unterricht
     return activePeriods().map((p) => {
       const [vh, vm] = p.von.split(':').map(Number);
       const [bh, bm] = p.bis.split(':').map(Number);
@@ -393,8 +394,14 @@
     });
   }
 
+  // Bis zu 7 Tage im Voraus sammeln (Wochenend-Tage liefern oben leer zurueck),
+  // damit z.B. am Freitagnachmittag oder am Wochenende die naechste echte
+  // Schulstunde (Montag) gefunden wird statt Samstag/Sonntag als Unterrichtstag
+  // zu behandeln.
   function buildEntries() {
-    return [...buildDayEntries(0), ...buildDayEntries(1)].sort((a, b) => a.start - b.start);
+    const all = [];
+    for (let i = 0; i <= 7; i++) all.push(...buildDayEntries(i));
+    return all.sort((a, b) => a.start - b.start);
   }
 
   // Fuegt zwischen aufeinanderfolgenden Stunden automatisch "Pause"-Segmente ein,
@@ -612,10 +619,14 @@
     } else if (upcoming.length > 0) {
       const nxt = upcoming[0];
       const secTo = (nxt.start - now) / 1000;
+      const sameDay = nxt.start.toDateString() === now.toDateString();
+      const whenText = sameDay
+        ? `um <b>${nxt.von} Uhr</b>`
+        : `am <b>${wtNames[nxt.start.getDay()]}, ${pad2(nxt.start.getDate())}.${pad2(nxt.start.getMonth() + 1)}.</b> um <b>${nxt.von} Uhr</b>`;
       nowPanel.innerHTML = `
         <div class="idle-msg">
           Kein Unterricht gerade aktiv.<br>
-          Nächste Stunde: <b>${nxt.label || nxt.stunde + '. Std.'}</b> um <b>${nxt.von} Uhr</b> – in <b>${fmtClockHMS(secTo)}</b>
+          Nächste Stunde: <b>${nxt.label || nxt.stunde + '. Std.'}</b> ${whenText} – in <b>${fmtClockHMS(secTo)}</b>
         </div>`;
     } else {
       nowPanel.innerHTML = `<div class="idle-msg">Kein Unterricht gerade aktiv.</div>`;
