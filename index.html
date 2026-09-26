@@ -413,7 +413,11 @@
       if (i < list.length - 1) {
         const gapStart = list[i].end;
         const gapEnd = list[i + 1].start;
-        if (gapEnd - gapStart > 60000) {
+        // Nur Luecken INNERHALB desselben Schultags als "Pause" zaehlen - sonst
+        // wuerde die Nacht (letzte Stunde heute -> erste Stunde morgen/naechster
+        // Schultag) faelschlich als eine einzige, sehr lange Pause angezeigt.
+        const sameDay = gapStart.toDateString() === gapEnd.toDateString();
+        if (sameDay && gapEnd - gapStart > 60000) {
           timeline.push({
             isPause: true, label: list[i].pauseAfter || 'Pause',
             von: `${pad2(gapStart.getHours())}:${pad2(gapStart.getMinutes())}`,
@@ -521,17 +525,22 @@
       current = timeline.find(e => now >= e.start && now <= e.end);
     }
 
-    // Wenn gerade nichts läuft, aber die nächste Stunde in <= 60 Minuten beginnt:
-    // eigener Countdown "vor Unterrichtsbeginn", der wie eine ganz normale
-    // Stunde/Pause im selben Ring dargestellt wird (Start = 1h vor Beginn).
+    // Wenn gerade nichts läuft: immer ein Countdown-Ring bis zur naechsten
+    // Stunde, auch in laengeren Leerzeiten (Abend, Wochenende) - nicht nur
+    // in der letzten Stunde davor. Die Farbe bleibt dabei lange gruen und
+    // wechselt erst in der letzten Stunde vor Beginn ueber gelb nach rot
+    // (Referenzfenster fuer den Farbverlauf bleibt 1h, s.u.).
     if (!current && upcoming.length > 0) {
       const secToNext = (upcoming[0].start - now) / 1000;
-      if (secToNext > 0 && secToNext <= 3600) {
+      if (secToNext > 0) {
         const nxt = upcoming[0];
         const preStart = new Date(nxt.start.getTime() - 3600000);
+        const sameDayAsNow = nxt.start.toDateString() === now.toDateString();
         current = {
           isPreStart: true,
-          label: `Vor Unterrichtsbeginn`,
+          label: sameDayAsNow
+            ? `Vor Unterrichtsbeginn`
+            : `Vor Unterrichtsbeginn · ${wtNames[nxt.start.getDay()]}, ${pad2(nxt.start.getDate())}.${pad2(nxt.start.getMonth() + 1)}.`,
           von: `${pad2(preStart.getHours())}:${pad2(preStart.getMinutes())}`,
           bis: nxt.von,
           start: preStart,
@@ -599,7 +608,10 @@
         : current.isPause ? current.label
         : current.isPhoto ? `${current.stunde}. Std. · ${current.label}`
         : (current.label || `${current.stunde}. Std.`);
-      const countdownText = current.isPause ? fmtClockHMS(secLeft) : fmtClock(secLeft);
+      // Pausen und (jetzt teils mehrstuendige) Vor-Unterrichtsbeginn-Countdowns
+      // brauchen das HH:MM:SS-Format, echte Stunden bleiben bei MM:SS.
+      const useHMS = current.isPause || current.isPreStart;
+      const countdownText = useHMS ? fmtClockHMS(secLeft) : fmtClock(secLeft);
 
       nowPanel.innerHTML = `
         <div class="ring-wrap">
@@ -610,24 +622,12 @@
             <circle class="pie-contour" cx="64" cy="64" r="${R}"></circle>
           </svg>
           <div class="ring-center">
-            <div class="ring-countdown${current.isPause ? ' long' : ''}">${countdownText}</div>
+            <div class="ring-countdown${useHMS ? ' long' : ''}">${countdownText}</div>
             <div class="ring-clock">${nowClockText}</div>
           </div>
         </div>
         <div class="now-class">${lineText}</div>
         ${current.isPhoto ? '<div class="now-hint">Fotostunde</div>' : ''}`;
-    } else if (upcoming.length > 0) {
-      const nxt = upcoming[0];
-      const secTo = (nxt.start - now) / 1000;
-      const sameDay = nxt.start.toDateString() === now.toDateString();
-      const whenText = sameDay
-        ? `um <b>${nxt.von} Uhr</b>`
-        : `am <b>${wtNames[nxt.start.getDay()]}, ${pad2(nxt.start.getDate())}.${pad2(nxt.start.getMonth() + 1)}.</b> um <b>${nxt.von} Uhr</b>`;
-      nowPanel.innerHTML = `
-        <div class="idle-msg">
-          Kein Unterricht gerade aktiv.<br>
-          Nächste Stunde: <b>${nxt.label || nxt.stunde + '. Std.'}</b> ${whenText} – in <b>${fmtClockHMS(secTo)}</b>
-        </div>`;
     } else {
       nowPanel.innerHTML = `<div class="idle-msg">Kein Unterricht gerade aktiv.</div>`;
     }
