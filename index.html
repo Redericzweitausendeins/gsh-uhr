@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1d3b2f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GSH">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>GSH Stundenuhr</title>
 <style>
   @font-face {
@@ -273,6 +280,100 @@
     { stunde: '8', label: 'Sonderunterricht/Lernzeit', von: '15:40', bis: '16:25' }
   ];
 
+  // Fotoaktion 2026 - Zeitplanung Stand 15.9.26 (Fotostunden-Belegung nach Datum/Stunde).
+  // Zeiten pro Stunde entsprechen dem GSH-Grundraster; Stunde 5/6 nutzen die
+  // Sek-II-ILSZ-Zeiten (13:15-14:00 / 14:05-14:50), da dort nur Q1/EF/Q2 stehen.
+  // "Mo. 05.09." im Original-Zettel ist ein Tippfehler fuer "Mo. 05.10." (passt zur
+  // Spaltenreihenfolge Fr 02.10 -> Mo -> Di 06.10 -> Mi 7.10 und zur Fahrtenwoche-Notiz).
+  const PHOTO_PERIOD_TIMES = {
+    1: ['08:10', '09:10'],
+    2: ['09:15', '10:15'],
+    3: ['10:40', '11:40'],
+    4: ['11:45', '12:45'],
+    5: ['13:15', '14:00'],
+    6: ['14:05', '14:50'],
+    7: ['13:50', '14:50'],
+    8: ['14:55', '15:55']
+  };
+
+  const PHOTO_SCHEDULE = [
+    // Fr 25.09.2026 - "9er"
+    { date: '2026-09-25', stunde: 1, klasse: '9.4 / 9.3' },
+    { date: '2026-09-25', stunde: 2, klasse: '9.5 / 9.2' },
+    { date: '2026-09-25', stunde: 3, klasse: '9.1' },
+    // Mo 28.09.2026 - ab hier Jg. 9 im Praktikum
+    { date: '2026-09-28', stunde: 1, klasse: '7.1' },
+    { date: '2026-09-28', stunde: 2, klasse: '10.2' },
+    { date: '2026-09-28', stunde: 3, klasse: '10.4' },
+    { date: '2026-09-28', stunde: 7, klasse: '7.5' },
+    // Di 29.09.2026
+    { date: '2026-09-29', stunde: 1, klasse: '7.2' },
+    { date: '2026-09-29', stunde: 2, klasse: '5.3' },
+    { date: '2026-09-29', stunde: 3, klasse: '5.1' },
+    { date: '2026-09-29', stunde: 4, klasse: '5.5' },
+    // Mi 30.09.2026
+    { date: '2026-09-30', stunde: 1, klasse: '10.1' },
+    { date: '2026-09-30', stunde: 3, klasse: '5.4' },
+    { date: '2026-09-30', stunde: 4, klasse: '7.3' },
+    { date: '2026-09-30', stunde: 7, klasse: 'Q2' },
+    { date: '2026-09-30', stunde: 8, klasse: 'Q2', tentative: true },
+    // Do 01.10.2026
+    { date: '2026-10-01', stunde: 1, klasse: '10.3' },
+    { date: '2026-10-01', stunde: 3, klasse: '7.4' },
+    { date: '2026-10-01', stunde: 4, klasse: '5.2' },
+    { date: '2026-10-01', stunde: 7, klasse: '10.5' },
+    // Fr 02.10.2026 - keine Eintraege
+    // Mo 05.10.2026 - Fahrtenwoche (Jg. 5/7/10/Q2 unterwegs)
+    { date: '2026-10-05', stunde: 3, klasse: '8.3' },
+    { date: '2026-10-05', stunde: 4, klasse: '8.5' },
+    { date: '2026-10-05', stunde: 5, klasse: 'Q1' },
+    { date: '2026-10-05', stunde: 6, klasse: 'Q1' },
+    // Di 06.10.2026
+    { date: '2026-10-06', stunde: 1, klasse: '6.4' },
+    { date: '2026-10-06', stunde: 2, klasse: '6.5' },
+    { date: '2026-10-06', stunde: 3, klasse: '8.4' },
+    { date: '2026-10-06', stunde: 4, klasse: '8.2' },
+    { date: '2026-10-06', stunde: 5, klasse: 'EF' },
+    { date: '2026-10-06', stunde: 6, klasse: 'EF' },
+    // Mi 07.10.2026
+    { date: '2026-10-07', stunde: 1, klasse: '8.1' },
+    { date: '2026-10-07', stunde: 2, klasse: '6.1' },
+    { date: '2026-10-07', stunde: 3, klasse: '6.2' },
+    { date: '2026-10-07', stunde: 4, klasse: '6.3' },
+    { date: '2026-10-07', stunde: 7, klasse: 'Q1' }
+  ];
+
+  function fmtISODate(d) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  // Baut aus PHOTO_SCHEDULE fuer ein bestimmtes Kalenderdatum echte Date-Termine,
+  // im selben Format wie die generischen Stunden-Eintraege (start/end/von/bis),
+  // damit Ring, Farbverlauf und Stundenraster sie ohne Sonderfall darstellen koennen.
+  function buildPhotoEntriesForDate(dateStr) {
+    return PHOTO_SCHEDULE.filter((e) => e.date === dateStr).map((e) => {
+      const times = PHOTO_PERIOD_TIMES[e.stunde];
+      if (!times) return null;
+      const [y, mo, da] = dateStr.split('-').map(Number);
+      const [vh, vm] = times[0].split(':').map(Number);
+      const [bh, bm] = times[1].split(':').map(Number);
+      return {
+        isPhoto: true,
+        stunde: e.stunde,
+        label: e.tentative ? `${e.klasse} (vorläufig)` : e.klasse,
+        von: times[0], bis: times[1],
+        start: new Date(y, mo - 1, da, vh, vm),
+        end: new Date(y, mo - 1, da, bh, bm),
+        isPause: false
+      };
+    }).filter(Boolean).sort((a, b) => a.start - b.start);
+  }
+
+  function findActivePhotoEntry(now) {
+    const todays = buildPhotoEntriesForDate(fmtISODate(now));
+    return todays.find((e) => now >= e.start && now <= e.end) || null;
+  }
+
   let currentMode = 'sek1';
   function activePeriods() { return currentMode === 'sek1' ? SEK1_PERIODS : SEK2_PERIODS; }
 
@@ -403,8 +504,15 @@
 
     const entries = buildEntries();
     const timeline = buildTimeline(entries);
-    let current = timeline.find(e => now >= e.start && now <= e.end);
     const upcoming = entries.filter(e => e.start > now).slice(0, 1);
+
+    // Fotoplan hat Vorrang: laeuft gerade eine geplante Fotostunde, wird die
+    // angezeigt. Sonst laeuft die Uhr exakt wie bisher nach dem generischen
+    // Sek I/II-Stundenraster ("freie Stunden wie gehabt").
+    let current = findActivePhotoEntry(now);
+    if (!current) {
+      current = timeline.find(e => now >= e.start && now <= e.end);
+    }
 
     // Wenn gerade nichts läuft, aber die nächste Stunde in <= 60 Minuten beginnt:
     // eigener Countdown "vor Unterrichtsbeginn", der wie eine ganz normale
@@ -481,7 +589,9 @@
 
       const lineText = current.isPreStart
         ? `${current.label} · ab ${current.bis} Uhr`
-        : current.isPause ? current.label : (current.label || `${current.stunde}. Std.`);
+        : current.isPause ? current.label
+        : current.isPhoto ? `${current.stunde}. Std. · ${current.label}`
+        : (current.label || `${current.stunde}. Std.`);
       const countdownText = current.isPause ? fmtClockHMS(secLeft) : fmtClock(secLeft);
 
       nowPanel.innerHTML = `
@@ -497,7 +607,8 @@
             <div class="ring-clock">${nowClockText}</div>
           </div>
         </div>
-        <div class="now-class">${lineText}</div>`;
+        <div class="now-class">${lineText}</div>
+        ${current.isPhoto ? '<div class="now-hint">Fotostunde</div>' : ''}`;
     } else if (upcoming.length > 0) {
       const nxt = upcoming[0];
       const secTo = (nxt.start - now) / 1000;
@@ -570,6 +681,12 @@
 
   render();
   setInterval(render, 1000);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    });
+  }
 </script>
 </body>
 </html>
